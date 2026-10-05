@@ -199,6 +199,134 @@ class Tensor:
     def __rmatmul__(self, other):
         return self._lift(other) @ self
 
+    # ---------------------------------------------------------- elementwise
+    def exp(self):
+        out_data = np.exp(self.data)
+        out = Tensor._from_op(out_data, (self,), "exp")
+        if out.requires_grad:
+            def _backward():
+                self._accum(out.grad * out_data)
+            out._backward = _backward
+        return out
+
+    def log(self):
+        out = Tensor._from_op(np.log(self.data), (self,), "log")
+        if out.requires_grad:
+            def _backward():
+                self._accum(out.grad / self.data)
+            out._backward = _backward
+        return out
+
+    def sqrt(self):
+        return self ** 0.5
+
+    def tanh(self):
+        out_data = np.tanh(self.data)
+        out = Tensor._from_op(out_data, (self,), "tanh")
+        if out.requires_grad:
+            def _backward():
+                self._accum(out.grad * (1.0 - out_data ** 2))
+            out._backward = _backward
+        return out
+
+    def relu(self):
+        mask = self.data > 0
+        out = Tensor._from_op(self.data * mask, (self,), "relu")
+        if out.requires_grad:
+            def _backward():
+                self._accum(out.grad * mask)
+            out._backward = _backward
+        return out
+
+    def masked_fill(self, mask, value):
+        """Replace entries where ``mask`` is True with ``value`` (mask broadcasts)."""
+        mask = np.broadcast_to(np.asarray(mask, dtype=bool), self.shape)
+        out = Tensor._from_op(np.where(mask, value, self.data), (self,), "masked_fill")
+        if out.requires_grad:
+            def _backward():
+                self._accum(np.where(mask, 0.0, out.grad))
+            out._backward = _backward
+        return out
+
+    # ------------------------------------------------------------- reductions
+    def sum(self, axis=None, keepdims=False):
+        out = Tensor._from_op(self.data.sum(axis=axis, keepdims=keepdims), (self,), "sum")
+        if out.requires_grad:
+            def _backward():
+                g = out.grad
+                if axis is not None and not keepdims:
+                    g = np.expand_dims(g, axis)
+                self._accum(np.broadcast_to(g, self.shape))
+            out._backward = _backward
+        return out
+
+    def mean(self, axis=None, keepdims=False):
+        if axis is None:
+            count = self.data.size
+        else:
+            axes = axis if isinstance(axis, tuple) else (axis,)
+            count = int(np.prod([self.shape[a] for a in axes]))
+        return self.sum(axis=axis, keepdims=keepdims) * (1.0 / count)
+
+    def max(self, axis=None, keepdims=False):
+        out_keep = self.data.max(axis=axis, keepdims=True)
+        out_data = out_keep if keepdims else self.data.max(axis=axis)
+        out = Tensor._from_op(out_data, (self,), "max")
+        if out.requires_grad:
+            def _backward():
+                # split the gradient evenly between tied maxima
+                mask = (self.data == out_keep).astype(self.data.dtype)
+                mask /= mask.sum(axis=axis, keepdims=True)
+                g = out.grad
+                if axis is not None and not keepdims:
+                    g = np.expand_dims(g, axis)
+                elif axis is None and not keepdims:
+                    g = np.reshape(g, (1,) * self.ndim)
+                self._accum(mask * g)
+            out._backward = _backward
+        return out
+
+    # ---------------------------------------------------------- shape / index
+    def reshape(self, *shape):
+        if len(shape) == 1 and isinstance(shape[0], (tuple, list)):
+            shape = tuple(shape[0])
+        out = Tensor._from_op(self.data.reshape(shape), (self,), "reshape")
+        if out.requires_grad:
+            def _backward():
+                self._accum(out.grad.reshape(self.shape))
+            out._backward = _backward
+        return out
+
+    def transpose(self, *axes):
+        if len(axes) == 1 and isinstance(axes[0], (tuple, list)):
+            axes = tuple(axes[0])
+        if not axes:
+            axes = tuple(reversed(range(self.ndim)))
+        inverse = tuple(np.argsort(axes))
+        out = Tensor._from_op(self.data.transpose(axes), (self,), "transpose")
+        if out.requires_grad:
+            def _backward():
+                self._accum(out.grad.transpose(inverse))
+            out._backward = _backward
+        return out
+
+    @property
+    def T(self):
+        return self.transpose()
+
+    def __getitem__(self, index):
+        if isinstance(index, Tensor):
+            index = index.data.astype(np.int64)
+        out = Tensor._from_op(self.data[index], (self,), "getitem")
+        if out.requires_grad:
+            def _backward():
+                g = np.zeros_like(self.data)
+                # add.at so repeated indices (e.g. a token used twice) accumulate
+                np.add.at(g, index, out.grad)
+                self._accum(g)
+            out._backward = _backward
+        return out
+
     # --------------------------------------------------------------- backprop
     def _topo_order(self):
         """Nodes reachable from ``self``, parents before children (iterative DFS)."""
