@@ -1,0 +1,6 @@
+numpy>=1.24
+pytest>=7.0
+# optional: only used to cross-check gradients against a reference implementation
+torch>=2.0
+# optional: only used by train.py --plot
+matplotlib>=3.7
