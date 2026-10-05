@@ -99,6 +99,38 @@ sample predictions (held-out):
 Each run writes the checkpoint (`model.npz`), the metric history and an optional
 loss plot to `runs/latest/`. Run `python train.py -h` to see all options.
 
+## Using a trained model
+
+```bash
+python predict.py --ckpt runs/latest                       # accuracy on 500 unseen random sequences
+python predict.py --ckpt runs/latest --input "3 1 4 1 5 9"
+python predict.py --ckpt runs/latest --interactive
+```
+
+Symbols are the integers `0`–`9`. To rebuild the model, `predict.py` reads the
+architecture from `history.json` and the weights from `model.npz`, so it needs
+both files.
+
+### Training on Kaggle, running locally
+
+Everything runs on NumPy, so it only uses the CPU and a GPU makes no difference.
+Kaggle is useful for longer runs that you don't want tying up your laptop. In a
+Kaggle notebook (Settings → Internet **on**):
+
+```python
+!git clone https://github.com/manian1909/transformer-.git
+%cd transformer-
+!python train.py --task reverse --steps 3000 --plot --out /kaggle/working/reverse
+```
+
+When it finishes, download `model.npz` and `history.json` from
+`/kaggle/working/reverse` (Output panel on the right), put both in a folder such
+as `checkpoints/reverse/`, and run this locally:
+
+```bash
+python predict.py --ckpt checkpoints/reverse
+```
+
 ## References
 
 - Vaswani et al., *Attention Is All You Need*, 2017
