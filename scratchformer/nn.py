@@ -121,6 +121,26 @@ class Embedding(Module):
         return F.embedding(self.weight, indices)
 
 
+class LayerNorm(Module):
+    """Normalise over the last axis, then apply a learned scale and shift.
+
+    Written in terms of engine primitives (mean, sub, pow, mul) so the backward
+    pass falls out of the autodiff graph rather than being hand-derived.
+    """
+
+    def __init__(self, dim, eps=1e-5):
+        self.eps = eps
+        self.gamma = Parameter(np.ones(dim))
+        self.beta = Parameter(np.zeros(dim))
+
+    def forward(self, x):
+        mu = x.mean(axis=-1, keepdims=True)
+        centered = x - mu
+        var = (centered * centered).mean(axis=-1, keepdims=True)
+        x_hat = centered * (var + self.eps) ** -0.5
+        return x_hat * self.gamma + self.beta
+
+
 class Dropout(Module):
     def __init__(self, p=0.1):
         self.p = p
