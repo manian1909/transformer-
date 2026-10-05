@@ -62,16 +62,11 @@ def evaluate(model, src, tgt_in, tgt_out, max_len):
     return loss, tok_acc, float(exact), generated
 
 
-def main():
-    args = parse_args()
-    manual_seed(args.seed)
-    task = SequenceTask(args.task, args.num_symbols, args.min_len, args.max_len, seed=args.seed)
-    held_out = SequenceTask(args.task, args.num_symbols, args.min_len, args.max_len, seed=args.seed + 1)
-    eval_batch = held_out.sample(args.eval_size)
-
-    model = Transformer(
-        task.vocab_size,
-        task.vocab_size,
+def build_model(args, vocab_size):
+    """Construct the model from training args (also used by predict.py to reload)."""
+    return Transformer(
+        vocab_size,
+        vocab_size,
         d_model=args.d_model,
         n_heads=args.heads,
         n_encoder_layers=args.layers,
@@ -81,6 +76,16 @@ def main():
         max_len=args.max_len + 2,
         pad_idx=PAD,
     )
+
+
+def main():
+    args = parse_args()
+    manual_seed(args.seed)
+    task = SequenceTask(args.task, args.num_symbols, args.min_len, args.max_len, seed=args.seed)
+    held_out = SequenceTask(args.task, args.num_symbols, args.min_len, args.max_len, seed=args.seed + 1)
+    eval_batch = held_out.sample(args.eval_size)
+
+    model = build_model(args, task.vocab_size)
     optimizer = Adam(model.parameters(), betas=(0.9, 0.98), eps=1e-9)
     schedule = NoamSchedule(optimizer, args.d_model, warmup=args.warmup, factor=args.lr_factor)
     print(f"task={args.task} params={model.num_parameters():,}")
