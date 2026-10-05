@@ -138,11 +138,12 @@ def save_plot(history, path):
     ax.set_xlabel("step")
     ax.set_ylabel("cross-entropy")
     ax.set_yscale("log")
-    ax.legend()
     ax2 = ax.twinx()
     ax2.plot(history["eval_step"], history["eval_exact"], color="tab:green", ls="--", label="exact match")
     ax2.set_ylabel("exact match")
     ax2.set_ylim(0, 1.02)
+    lines = ax.get_lines() + ax2.get_lines()
+    ax.legend(lines, [l.get_label() for l in lines], loc="center right")
     fig.tight_layout()
     fig.savefig(path, dpi=120)
 
